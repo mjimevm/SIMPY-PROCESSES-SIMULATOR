@@ -29,24 +29,24 @@ GO_TO_WAITING = 1
 GO_TO_READY = 2
 
 
-def source(env, number, interval, CPU, RAM, IO, instructions_per_quantum, finished_times, verbose=False):
+def source(env, number, interval, CPU, RAM, IO, instructions_per_quantum, finished_times, debug=False):
     for i in range(number):
         RAM_needed = random.randint(RAM_MIN, RAM_MAX)
         p = process(env, 'Proceso %03d' % (i + 1), RAM_needed, CPU, RAM, IO,
-                    instructions_per_quantum, finished_times, verbose)
+                    instructions_per_quantum, finished_times, debug)
         env.process(p)
         t = random.expovariate(1.0 / float(interval))
         yield env.timeout(t)
 
 
-def process(env, name, RAM_needed, CPU, RAM, IO, instructions_per_quantum, finished_times, verbose=False):
+def process(env, name, RAM_needed, CPU, RAM, IO, instructions_per_quantum, finished_times, debug=False):
     arrive = env.now
-    if verbose:
+    if debug:
         print('%7.4f %s: EMPEZANDO, RAM NECESARIA: %d' % (arrive, name, RAM_needed))
 
     # Solicita RAM (Container hace cola si no hay suficiente)
     yield RAM.get(RAM_needed)
-    if verbose:
+    if debug:
         print('%7.4f %s: CONSIGUIÓ RAM (%d). PASA A READY' % (env.now, name, RAM_needed))
 
     # Instrucciones totales del proceso
@@ -64,7 +64,7 @@ def process(env, name, RAM_needed, CPU, RAM, IO, instructions_per_quantum, finis
 
             instructions -= executed
 
-            if verbose:
+            if debug:
                 print('%7.4f %s: INSTRUCCIONES RESTANTES: %d' %
                       (env.now, name, max(instructions, 0)))
 
@@ -75,28 +75,28 @@ def process(env, name, RAM_needed, CPU, RAM, IO, instructions_per_quantum, finis
 
         # WAITING O READY
         if action == GO_TO_WAITING:
-            if verbose:
+            if debug:
                 print('%7.4f %s: waiting for I/O' % (env.now, name))
             with IO.request() as io_req:
                 yield io_req
                 yield env.timeout(IO_TIME)
-            if verbose:
+            if debug:
                 print('%7.4f %s: Finished I/O, back to ready' % (env.now, name))
         elif action == GO_TO_READY:
-            if verbose:
+            if debug:
                 print('%7.4f %s: ready' % (env.now, name))
         else:
             pass
 
     yield RAM.put(RAM_needed)
     finish = env.now
-    if verbose:
+    if debug:
         print('%7.4f %s: terminated (tiempo total=%.4f)' % (finish, name, finish - arrive))
 
     finished_times.append(finish - arrive)
 
 
-def run_simulation(n_processes, interval, ram_capacity, cpu_count, instructions_per_quantum, seed, verbose=False):
+def run_simulation(n_processes, interval, ram_capacity, cpu_count, instructions_per_quantum, seed, debug=False):
     random.seed(seed)
     env = simpy.Environment()
 
@@ -105,7 +105,7 @@ def run_simulation(n_processes, interval, ram_capacity, cpu_count, instructions_
     IO = simpy.Resource(env, capacity=1)
 
     finished_times = []
-    env.process(source(env, n_processes, interval, CPU, RAM, IO, instructions_per_quantum, finished_times, verbose))
+    env.process(source(env, n_processes, interval, CPU, RAM, IO, instructions_per_quantum, finished_times, debug))
     env.run()
 
     avg = statistics.mean(finished_times) if finished_times else 0.0
@@ -123,22 +123,22 @@ def scenarios():
     }
 
 
-def run_all(verbose=False):
+def run_all(debug=False):
     all_results = {}
 
-    for scen_name, params in scenarios().items():
+    for nombre_escenario, parametros in scenarios().items():
         for interval in INTERVALS:
-            key = (scen_name, interval)
+            key = (nombre_escenario, interval)
             all_results[key] = {}
             for n in N_LIST:
                 avg, sd, _ = run_simulation(
                     n_processes=n,
                     interval=interval,
-                    ram_capacity=params["RAM"],
-                    cpu_count=params["CPUS"],
-                    instructions_per_quantum=params["k"],
+                    ram_capacity=parametros["RAM"],
+                    cpu_count=parametros["CPUS"],
+                    instructions_per_quantum=parametros["k"],
                     seed=RANDOM_SEED,  # misma secuencia para comparar
-                    verbose=verbose if n <= 25 else False,
+                    debug=debug if n <= 25 else False,
                 )
                 all_results[key][n] = (avg, sd)
 
@@ -146,9 +146,9 @@ def run_all(verbose=False):
 
 """FUNCIONES DE MATPLOTLIB Y ANÁLISIS DE RESULTADOS"""
 def print_results(all_results):
-    for (scen, interval), per_n in all_results.items():
+    for (escenario, intervalo), per_n in all_results.items():
         print("\n" + "=" * 72)
-        print("Escenario: %s | interval=%s" % (scen, interval))
+        print("Escenario: %s | interval=%s" % (escenario, intervalo))
         print("-" * 72)
         print("No_Procesos| Tiempo_Promedio | Desviacion_Estándar")
         for n in sorted(per_n.keys()):
@@ -157,16 +157,16 @@ def print_results(all_results):
 
 
 def plot_results(all_results, prefix="simpy_processes"):
-    intervals = sorted(set(interval for (_s, interval) in all_results.keys()))
+    intervalos = sorted(set(interval for (_s, interval) in all_results.keys()))
 
-    for interval in intervals:
+    for intervalo in intervalos:
         plt.figure(figsize=(10, 6))
-        plt.title("Tiempo promedio vs Número de Procesos (Intervalo: %s)" % interval)
+        plt.title("Tiempo promedio vs Número de Procesos (Intervalo: %s)" % intervalo)
         plt.xlabel("Número de procesos")
         plt.ylabel("Tiempo promedio en el sistema")
 
         for (escenario, i), per_n in all_results.items():
-            if i != interval:
+            if i != intervalo:
                 continue
             xs = sorted(per_n.keys())
             ys = [per_n[n][0] for n in xs]
@@ -175,13 +175,13 @@ def plot_results(all_results, prefix="simpy_processes"):
         plt.grid(True, alpha=0.3)
         plt.legend()
         plt.tight_layout()
-        plt.savefig("%s_interval_%s.png" % (prefix, interval), dpi=160)
+        plt.savefig("%s_interval_%s.png" % (prefix, intervalo), dpi=160)
         plt.close()
 
 # Función simple para elegir la mejor estrategia según el promedio global
 def best_strategy_simple(all_results):
     escenarios = {}
-    for (escenario), per_n in all_results.items():
+    for (escenario, intervalo), per_n in all_results.items():
         escenarios.setdefault(escenario, [])
         for n in per_n:
             escenarios[escenario].append(per_n[n][0])
@@ -202,7 +202,7 @@ def best_strategy_simple(all_results):
 print('PROCESSES SIMULATION')
 random.seed(RANDOM_SEED)
 
-all_results = run_all(verbose=False)
+all_results = run_all(debug=False)
 print_results(all_results)
 plot_results(all_results, prefix="simpy_processes")
 
